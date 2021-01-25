@@ -5,19 +5,12 @@ import numpy as np
 import openmc
 
 """Materials"""
-
 #2.0% Enriched Fuel
 fuel = openmc.Material(name='2.0% Fuel')
-fuel.add_element('U', 1.0, enrichment = 2.0)
+fuel.add_element('U', 0.995, enrichment = 2.0)
+fuel.add_element('Er', 0.005)
 fuel.add_nuclide('O16', 2.0)
 fuel.set_density('g/cm3', 10.400)
-
-#Light water
-water = openmc.Material(name='Water')
-water.add_nuclide('H1', 2.0)
-water.add_nuclide('O16', 1.0)
-water.add_s_alpha_beta('c_H_in_H2O')
-water.set_density('g/cm3', 1.0)
 
 #Zircaloy
 zircaloy = openmc.Material(name='Zircaloy')
@@ -37,7 +30,7 @@ helium.add_element('He', 1)
 helium.set_density('g/cm3', 0.178)
 
 #Instantiate a Materials collection
-materials_file = openmc.Materials([fuel, water, zircaloy, helium, wall])
+materials_file = openmc.Materials([fuel, zircaloy, helium, wall])
 
 #Export to "materials.xml"
 materials_file.export_to_xml()
@@ -46,8 +39,8 @@ materials_file.export_to_xml()
 """Creating the Fuel Rod"""
 
 #Making the boundary planes for the sleeves
-sleeve_min_z = openmc.ZPlane(z0=-12, boundary_type='transmission')
-sleeve_max_z = openmc.ZPlane(z0=+12, boundary_type='transmission')
+sleeve_min_z = openmc.ZPlane(z0=-12)
+sleeve_max_z = openmc.ZPlane(z0=+12)
 
 # Create cylinders for the fuel and clad
 fuel_inner_radius = openmc.ZCylinder(x0=0, y0=0, r=0.55) #0.3 mm clearing between fuel pellets and tube
@@ -67,7 +60,7 @@ pin_cell_universe.add_cell(fuel_cell)
 # Create Void Space
 void_space = openmc.Cell(name='empty_space')
 void_space.fill = helium
-void_space.region = +fuel_inner_radius & -fuel_outer_radius
+void_space.region = +fuel_inner_radius & -clad_inner_radius
 pin_cell_universe.add_cell(void_space)
 
 # Create a clad Cell
@@ -76,17 +69,17 @@ clad_cell.fill = zircaloy
 clad_cell.region = +clad_inner_radius & -clad_outer_radius
 pin_cell_universe.add_cell(clad_cell)
 
+# Create an outside of pin cell
+moderator = openmc.Cell(name='Moderator')
+moderator.fill = helium
+moderator.region = +clad_outer_radius
+pin_cell_universe.add_cell(moderator)
+
 # Create a 'sleeve' Cell that slices through the middle of the elongated element
 sleeve_cell = openmc.Cell(name='Sleeve')
 sleeve_cell.fill = helium
 sleeve_cell.region = -clad_outer_radius & +sleeve_min_z & -sleeve_max_z
 pin_cell_universe.add_cell(sleeve_cell)
-
-# Create a moderator Cell
-moderator_cell = openmc.Cell(name='Moderator')
-moderator_cell.fill = water
-moderator_cell.region = +clad_outer_radius
-pin_cell_universe.add_cell(moderator_cell)
 
 
 """Creating the Carrier Rod"""
@@ -116,8 +109,8 @@ rod_cell_universe.add_cell(outer_rod)
 #Defining boundary planes
 element_min_z = openmc.ZPlane(z0=-364, boundary_type='reflective')
 element_max_z = openmc.ZPlane(z0=+364, boundary_type='reflective')
-carrier_min_z = openmc.ZPlane(z0=-600, boundary_type='reflective')
-carrier_max_z = openmc.ZPlane(z0=+4000, boundary_type='reflective')
+carrier_min_z = openmc.ZPlane(z0=-400, boundary_type='reflective')
+carrier_max_z = openmc.ZPlane(z0=+600, boundary_type='reflective')
 
 #Creating circular lattice
 circlat = openmc.Universe(name='Circular Lattice')
@@ -126,15 +119,15 @@ circlat = openmc.Universe(name='Circular Lattice')
 channel = openmc.ZCylinder(r=4.0, boundary_type='reflective')
 
 channel_cell = openmc.Cell(name='Channel')
-channel_cell.fill = water
+channel_cell.fill = helium
 channel_cell.region = -channel & +rod_outer_radius & +element_min_z & -element_max_z
 
 #Calculations before finding pin placement
 r_channel = 4.0
-r_element = 0.796
+r_element = 0.68
 r_outer = r_channel-r_element
 
-padding = (pi/12)*r_outer-r_element
+padding = pi*r_outer/6-2*r_element
 r_inner = r_outer*cos(pi/12)-sqrt((r_element*2+padding)**2-(r_element+padding)**2)
 
 #Adding the fuel pins into the channel
@@ -143,30 +136,30 @@ radii = [r_inner, r_outer]
 angles = [0, pi/12]
 
 for index in range(len(num_in_rings)):
-	elem_num = num_in_rings[index]
-	ring_radius = radii[index]
-	theta_0 = angles[index]
-	theta = 2*pi/elem_num
-	for element in range(elem_num):
-		x = ring_radius*cos(element*theta + theta_0)
-		y = ring_radius*sin(element*theta + theta_0)
+  elem_num = num_in_rings[index]
+  ring_radius = radii[index]
+  theta_0 = angles[index]
+  theta = 2*pi/elem_num
+  for element in range(elem_num):
+    x = ring_radius*cos(element*theta + theta_0)
+    y = ring_radius*sin(element*theta + theta_0)
 
-		pin_boundary = openmc.ZCylinder(x0=x, y0=y, r=r_element)
-		pin = openmc.Cell(fill=pin_cell_universe, region=-pin_boundary & +element_min_z & -element_max_z)
-		pin.translation = (x,y,0)
-		pin.id = (index+1)*100 + element
-		channel_cell.region &= ~pin.region
-		circlat.add_cell(pin)
+    pin_boundary = openmc.ZCylinder(x0=x, y0=y, r=r_element)
+    pin = openmc.Cell(fill=pin_cell_universe, region=-pin_boundary & +element_min_z & -element_max_z)
+    pin.translation = (x,y,0)
+    pin.id = (index+1)*100 + element
+    channel_cell.region &= ~pin.region
+    circlat.add_cell(pin)
 
 #Adding the 3 Components of the Carrier Rod
 rod_bound = openmc.ZCylinder(x0=0, y0=0, r=0.7625, boundary_type='reflective')
+rod_channel_min = openmc.ZPlane(z0=-364)
+rod_channel_max = openmc.ZPlane(z0=+364)
 
-rod_above = openmc.Cell(fill=rod_cell_universe, region=-rod_bound & -carrier_max_z & +element_max_z)
-channel_cell.region &= ~rod_above.region
-rod_mid = openmc.Cell(fill=rod_cell_universe, region=-rod_outer_radius & +element_min_z & -element_max_z)
-channel_cell.region &= ~rod_mid.region
-rod_below = openmc.Cell(fill=rod_cell_universe, region=-rod_bound & -element_min_z & +carrier_min_z)
-channel_cell.region &= ~rod_below.region
+rod_above = openmc.Cell(fill=rod_cell_universe, region=-rod_bound & -carrier_max_z & +rod_channel_max)
+print(rod_bound.id)
+rod_mid = openmc.Cell(fill=rod_cell_universe, region=-rod_outer_radius & +rod_channel_min & -rod_channel_max)
+rod_below = openmc.Cell(fill=rod_cell_universe, region=-rod_bound & -rod_channel_min & +carrier_min_z)
 
 circlat.add_cell(rod_above)
 circlat.add_cell(rod_mid)
@@ -177,10 +170,11 @@ circlat.add_cell(channel_cell)
 geometry = openmc.Geometry(circlat)
 geometry.export_to_xml()
 
+#Plotting a figure and saving
 #plt.figure(figsize=(12,12))
-#circlat.plot(basis='yz', origin=(0,0,0), width=(10,1000), color_by='material', pixels=[1000,1000])
+#circlat.plot(basis='xy', origin=(0,0,0), width=(10,10), color_by='material', pixels=[1000,1000])
 #plt.savefig('Vertical')
-#plt.savefig('RBMK')
+#plt.savefig('RBMK 1500')
 
 # OpenMC simulation parameters
 batches = 100
@@ -194,11 +188,12 @@ settings_file.inactive = inactive
 settings_file.particles = particles
 
 # Create an initial uniform spatial source distribution over fissionable zones
-bounds = [-4, -4, -3.4, 4, 4, 3.4]
+bounds = [-4, -4, -3.4, 4, 4, 3.4]#[-4, -4, -6, 4, 4, 8]
 uniform_dist = openmc.stats.Box(bounds[:3], bounds[3:], only_fissionable=True)
 settings_file.source = openmc.Source(space=uniform_dist)
 
 # Export to "settings.xml"
+#<trace>20 1 1618</trace>
 settings_file.export_to_xml()
 
 openmc.run()
