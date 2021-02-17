@@ -15,7 +15,7 @@ fuel.set_density('g/cm3', 10.400)
 #Zircaloy
 zircaloy = openmc.Material(name='Zircaloy')
 zircaloy.add_element('Zr', 0.99)
-zircaloy.add_element('Nb', 0.1)
+zircaloy.add_element('Nb', 0.01)
 zircaloy.set_density('g/cm3', 8.59)
 
 #Carrier Rod material
@@ -52,22 +52,40 @@ clad_outer_radius = openmc.ZCylinder(x0=0, y0=0, r=0.68)    #796) #0.86 mm wall 
 pin_cell_universe = openmc.Universe(name='2.0% Fuel Pin') 
 
 # Create fuel Cell
-fuel_cell = openmc.Cell(name='2.0% Fuel')
-fuel_cell.fill = fuel
-fuel_cell.region = -fuel_inner_radius
-pin_cell_universe.add_cell(fuel_cell)
+fuel_cell_top = openmc.Cell(name='2.0% Fuel')
+fuel_cell_top.fill = fuel
+fuel_cell_top.region = -fuel_inner_radius & +sleeve_max_z
+pin_cell_universe.add_cell(fuel_cell_top)
 
 # Create Void Space
-void_space = openmc.Cell(name='empty_space')
-void_space.fill = helium
-void_space.region = +fuel_inner_radius & -clad_inner_radius
-pin_cell_universe.add_cell(void_space)
+void_space_top = openmc.Cell(name='empty_space')
+void_space_top.fill = helium
+void_space_top.region = +fuel_inner_radius & -clad_inner_radius & +sleeve_max_z
+pin_cell_universe.add_cell(void_space_top)
 
 # Create a clad Cell
-clad_cell = openmc.Cell(name='2.0% Clad')
-clad_cell.fill = zircaloy
-clad_cell.region = +clad_inner_radius & -clad_outer_radius
-pin_cell_universe.add_cell(clad_cell)
+clad_cell_top = openmc.Cell(name='2.0% Clad')
+clad_cell_top.fill = zircaloy
+clad_cell_top.region = +clad_inner_radius & -clad_outer_radius & +sleeve_max_z
+pin_cell_universe.add_cell(clad_cell_top)
+
+# Create fuel Cell
+fuel_cell_bot = openmc.Cell(name='2.0% Fuel')
+fuel_cell_bot.fill = fuel
+fuel_cell_bot.region = -fuel_inner_radius & -sleeve_min_z
+pin_cell_universe.add_cell(fuel_cell_bot)
+
+# Create Void Space
+void_space_bot = openmc.Cell(name='empty_space')
+void_space_bot.fill = helium
+void_space_bot.region = +fuel_inner_radius & -clad_inner_radius & -sleeve_min_z
+pin_cell_universe.add_cell(void_space_bot)
+
+# Create a clad Cell
+clad_cell_bot = openmc.Cell(name='2.0% Clad')
+clad_cell_bot.fill = zircaloy
+clad_cell_bot.region = +clad_inner_radius & -clad_outer_radius & -sleeve_min_z
+pin_cell_universe.add_cell(clad_cell_bot)
 
 # Create an outside of pin cell
 moderator = openmc.Cell(name='Moderator')
@@ -116,7 +134,7 @@ carrier_max_z = openmc.ZPlane(z0=+600, boundary_type='reflective')
 circlat = openmc.Universe(name='Circular Lattice')
 
 #Making the channel and cell
-channel = openmc.ZCylinder(r=4.0, boundary_type='reflective')
+channel = openmc.ZCylinder(r=4.5, boundary_type='reflective')
 
 channel_cell = openmc.Cell(name='Channel')
 channel_cell.fill = helium
@@ -157,7 +175,6 @@ rod_channel_min = openmc.ZPlane(z0=-364)
 rod_channel_max = openmc.ZPlane(z0=+364)
 
 rod_above = openmc.Cell(fill=rod_cell_universe, region=-rod_bound & -carrier_max_z & +rod_channel_max)
-print(rod_bound.id)
 rod_mid = openmc.Cell(fill=rod_cell_universe, region=-rod_outer_radius & +rod_channel_min & -rod_channel_max)
 rod_below = openmc.Cell(fill=rod_cell_universe, region=-rod_bound & -rod_channel_min & +carrier_min_z)
 
@@ -172,9 +189,9 @@ geometry.export_to_xml()
 
 #Plotting a figure and saving
 #plt.figure(figsize=(12,12))
-#circlat.plot(basis='xy', origin=(0,0,0), width=(10,10), color_by='material', pixels=[1000,1000])
+#pin_cell_universe.plot(basis='yz', origin=(0,0,0), width=(2,40), color_by='material', pixels=[400,400])
 #plt.savefig('Vertical')
-#plt.savefig('RBMK 1500')
+#plt.savefig('Pin Cell')
 
 # OpenMC simulation parameters
 batches = 100
@@ -188,12 +205,11 @@ settings_file.inactive = inactive
 settings_file.particles = particles
 
 # Create an initial uniform spatial source distribution over fissionable zones
-bounds = [-4, -4, -3.4, 4, 4, 3.4]#[-4, -4, -6, 4, 4, 8]
-uniform_dist = openmc.stats.Box(bounds[:3], bounds[3:], only_fissionable=True)
+bounds = [-3, -3, -2.4, 3, 3, 2.4]
+uniform_dist = openmc.stats.Box(bounds[:3], bounds[3:], only_fissionable=False) #only_fissionable != True due to lots of helium
 settings_file.source = openmc.Source(space=uniform_dist)
 
 # Export to "settings.xml"
-#<trace>20 1 1618</trace>
 settings_file.export_to_xml()
 
 openmc.run()
