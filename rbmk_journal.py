@@ -213,3 +213,9 @@ settings_file.source = openmc.Source(space=uniform_dist)
 settings_file.export_to_xml()
 
 openmc.run()
+
+#SOURCES
+#"Fuel Assembly": https://web.archive.org/web/20090908013425/http:/www.insc.anl.gov:80/rbmk/reactor/assembly.html
+#"Fuel with burnable absorber for RBMK-1500", pg250-252: https://www.osti.gov/etdeweb/servlets/purl/20269236
+#"DESIGN AND FABRICATION OF NUCLEAR FUEL FOR WWER AND RBMK REACTORS"
+#	Slides 8-11: indico.ictp.it/event/a04215/session/26/contribution/16/material/0/1.pdf
